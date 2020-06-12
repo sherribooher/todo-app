@@ -1,5 +1,6 @@
 let express = require("express");
 let mongodb = require("mongodb");
+let sanitizeHTML = require("sanitize-html");
 
 let app = express();
 let db;
@@ -19,6 +20,18 @@ mongodb.connect(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+function passwordProtected(req, res, next) {
+  res.set("WWW-Authenticate", 'Basic realm="Simple Todo App"');
+  console.log(req.headers.authorization);
+  if (req.headers.authorization == "Basic c2hlcnJpOmJvb2hlcg==") {
+    next();
+  } else {
+    res.status(401).send("Authentication required");
+  }
+}
+
+app.use(passwordProtected);
 
 app.get("/", function (req, res) {
   db.collection("items")
@@ -46,13 +59,14 @@ app.get("/", function (req, res) {
   </div>
 
   <ul id="item-list" class="list-group pb-5">
-
   </ul>
 
   </div>
+
   <script>
   let items = ${JSON.stringify(items)}
   </script>
+
   <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
   <script src="/browser.js"></script>
   </body>
@@ -61,15 +75,23 @@ app.get("/", function (req, res) {
 });
 
 app.post("/create-item", function (req, res) {
-  db.collection("items").insertOne({ text: req.body.text }, function (err, info) {
-    res.json(info.ops[0])
+  let safeText = sanitizeHTML(req.body.text, {
+    allowedTags: [],
+    allowedAttributes: {},
+  });
+  db.collection("items").insertOne({ text: safeText }, function (err, info) {
+    res.json(info.ops[0]);
   });
 });
 
 app.post("/update-item", function (req, res) {
+  let safeText = sanitizeHTML(req.body.text, {
+    allowedTags: [],
+    allowedAttributes: {},
+  });
   db.collection("items").findOneAndUpdate(
     { _id: new mongodb.ObjectId(req.body.id) },
-    { $set: { text: req.body.text } },
+    { $set: { text: safeText } },
     function () {
       res.send("Success");
     }
@@ -80,7 +102,7 @@ app.post("/delete-item", function (req, res) {
   db.collection("items").deleteOne(
     { _id: new mongodb.ObjectId(req.body.id) },
     function () {
-      res.send("Success")
+      res.send("Success");
     }
-  )
-})
+  );
+});
